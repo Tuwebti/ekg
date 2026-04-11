@@ -167,13 +167,27 @@ active, unarchived, tasks."
               (delq nil (mapcar (lambda (row) (ekg-get-note-with-id (car row)))
                                 (triples-db-select ekg-db nil 'org/parent id)))))
 
-(defun ekg-org--format-timestamp (timestamp)
-  "Parse TIMESTAMP integer into an Org timestamp string."
-  (format-time-string "<%Y-%m-%d %a %H:%M>" (seconds-to-time timestamp)))
-
 (defun ekg-org--to-timestamp (ts-string)
   "Convert TS-STRING to a unix timestamp integer."
   (time-convert (date-to-time ts-string) 'integer))
+
+(defun ekg-org--timestamp-element (timestamp)
+  "Convert TIMESTAMP into an Org timestamp element.
+
+Include a time part when TIMESTAMP is not exactly midnight."
+  (when timestamp
+    (pcase-let ((`(,_sec ,min ,hour . ,_)
+                 (decode-time (seconds-to-time timestamp))))
+      (org-timestamp-from-time (time-convert timestamp t)
+                               (not (and (zerop hour) (zerop min)))))))
+
+(defun ekg-org--planning-element (deadline scheduled)
+  "Return an Org planning element for DEADLINE and SCHEDULED."
+  (when (or deadline scheduled)
+    (org-element-create
+     'planning
+     `(,@(when deadline `(:deadline ,deadline))
+       ,@(when scheduled `(:scheduled ,scheduled))))))
 
 (defun ekg-org-task-to-element (note parent)
   "Convert an EKG NOTE to an org-element node.
@@ -183,10 +197,10 @@ PARENT is the parent org-element node."
          (title (plist-get props :titled/title))
          (id (format "%s" (ekg-note-id note)))
          (state (ekg-org--state note))
-         (deadline (let ((d (plist-get props :org/deadline)))
-                     (when d (org-timestamp-from-time (time-convert d t)))))
-         (scheduled (let ((s (plist-get props :org/scheduled)))
-                      (when s (org-timestamp-from-time (time-convert s t))))))
+         (deadline (ekg-org--timestamp-element
+                    (plist-get props :org/deadline)))
+         (scheduled (ekg-org--timestamp-element
+                     (plist-get props :org/scheduled))))
     (let ((element (org-element-create
                     'headline
                     `(:level ,(+ 1 (or (org-element-property :level parent) 0))
@@ -196,17 +210,17 @@ PARENT is the parent org-element node."
                                                         (not (string-equal tag ekg-org-task-tag))
                                                         (not (string-equal tag ekg-org-archive-tag))))
                                      (ekg-note-tags note))
-                             :todo-keyword ,state
-                             ,@(when deadline `(:deadline ,deadline))
-                             ,@(when scheduled `(:scheduled ,scheduled))))))
+                             :todo-keyword ,state))))
       (org-element-set-contents
        element
        (append
-        (list
-         (org-element-create 'property-drawer nil
-                             (org-element-create 'node-property `(:key "EKG_ID" :value ,id)))
-         (org-element-create 'paragraph `(:post-blank 1)
-                             (format "EKG Entry: [[ekg-note:%s][View in EKG]]" id)))
+        (delq nil
+              (list
+               (ekg-org--planning-element deadline scheduled)
+               (org-element-create 'property-drawer nil
+                                   (org-element-create 'node-property `(:key "EKG_ID" :value ,id)))
+               (org-element-create 'paragraph `(:post-blank 1)
+                                   (format "EKG Entry: [[ekg-note:%s][View in EKG]]" id))))
         (let ((text (ekg-display-note-text note)))
           (when (and text (not (string-empty-p text)))
             (with-temp-buffer

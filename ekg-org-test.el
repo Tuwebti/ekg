@@ -75,6 +75,20 @@
     ;; Verify basic structure
     (should (string-match-p "\\* TODO Timed Task" rendered))
     (should (string-match-p "Content" rendered))
+    (should (string-match-p
+             "SCHEDULED: <2026-01-31 Sat 09:00>" rendered))
+    (should (string-match-p
+             "DEADLINE: <2026-02-01 Sun 10:00>" rendered))
+    ;; Verify Org will parse the rendered planning line back into the
+    ;; headline so agenda sees the task as scheduled.
+    (with-temp-buffer
+      (insert rendered)
+      (let ((headline
+             (org-element-map (org-element-parse-buffer) 'headline
+               (lambda (hl) hl)
+               nil t)))
+        (should (org-element-property :scheduled headline))
+        (should (org-element-property :deadline headline))))
     ;; Verify the timestamps are stored as properties
     (let ((props (ekg-note-properties note)))
       (should (plist-get props :org/deadline))
