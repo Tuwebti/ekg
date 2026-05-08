@@ -34,7 +34,7 @@
 (unless (require 'llm-test nil t)
   ;; When llm-test is unavailable, define a single skipped test so eldev does
   ;; not error on loading this file.
-  (ekg-deftest ekg-agent-llm-test/unavailable ()
+  (ert-deftest ekg-agent-llm-test/unavailable ()
     "Placeholder — llm-test library not found."
     (ert-skip "llm-test library not available")))
 
